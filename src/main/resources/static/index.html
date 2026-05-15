@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>高校选课管理系统</title>
+    <style>
+        body {
+            font-family: Arial, "Microsoft YaHei", sans-serif;
+            margin: 30px;
+            background-color: #f7f7f7;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .panel {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 16px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 140px;
+            box-sizing: border-box;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        input {
+            padding: 8px;
+            width: 300px;
+        }
+
+        button {
+            padding: 8px 16px;
+            margin-top: 10px;
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .message {
+            margin-top: 10px;
+            color: #0066cc;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #eeeeee;
+        }
+
+        .type-title {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #444;
+        }
+    </style>
+</head>
+<body>
+
+<h1>高校选课管理系统 - 学生选课基础处理工具</h1>
+
+<div class="panel">
+    <h2>一、CSV 批量导入</h2>
+    <p>格式：学生ID,课程ID,课程名称,课程类型</p>
+    <textarea id="csvText">S000001,C000001,Java程序设计,专业课
+S000002,C000003,计算机网络,公共课
+S000001,C000001,Java程序设计,专业课
+S000003,C000002,大学英语,公共课
+S000004,C000004,人工智能导论,选修课</textarea>
+    <br>
+    <button onclick="importCsv()">导入数据</button>
+    <button onclick="loadAll()">加载全部数据</button>
+    <button onclick="loadGrouped()">按课程类型展示</button>
+    <div id="message" class="message"></div>
+</div>
+
+<div class="panel">
+    <h2>二、选课检索</h2>
+    <p>支持按学生ID、课程ID、课程名称、课程类型检索</p>
+    <input id="keyword" placeholder="例如：S000001 / C000001 / Java / 专业课">
+    <button onclick="searchRecords()">搜索</button>
+</div>
+
+<div class="panel">
+    <h2>三、数据展示</h2>
+    <div id="tableContainer"></div>
+</div>
+
+<script>
+    window.onload = function () {
+        loadAll();
+    };
+
+    function showMessage(text) {
+        document.getElementById("message").innerText = text;
+    }
+
+    function importCsv() {
+        const csvText = document.getElementById("csvText").value;
+
+        fetch("/api/enrollments/import", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                csvText: csvText
+            })
+        })
+            .then(response => response.json())
+            .then(result => {
+                showMessage(result.message);
+                renderTable(result.data);
+            })
+            .catch(error => {
+                showMessage("导入失败：" + error);
+            });
+    }
+
+    function loadAll() {
+        fetch("/api/enrollments")
+            .then(response => response.json())
+            .then(data => {
+                showMessage("已加载全部选课记录");
+                renderTable(data);
+            })
+            .catch(error => {
+                showMessage("加载失败：" + error);
+            });
+    }
+
+    function searchRecords() {
+        const keyword = document.getElementById("keyword").value;
+
+        fetch("/api/enrollments/search?keyword=" + encodeURIComponent(keyword))
+            .then(response => response.json())
+            .then(result => {
+                showMessage(result.message);
+                renderTable(result.data);
+            })
+            .catch(error => {
+                showMessage("搜索失败：" + error);
+            });
+    }
+
+    function loadGrouped() {
+        fetch("/api/enrollments/grouped")
+            .then(response => response.json())
+            .then(groupedData => {
+                showMessage("已按课程类型分组展示");
+                renderGroupedTable(groupedData);
+            })
+            .catch(error => {
+                showMessage("加载分组数据失败：" + error);
+            });
+    }
+
+    function renderTable(records) {
+        const container = document.getElementById("tableContainer");
+
+        if (!records || records.length === 0) {
+            container.innerHTML = "<p>无匹配选课记录</p>";
+            return;
+        }
+
+        let html = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>学生ID</th>
+                        <th>课程ID</th>
+                        <th>课程名称</th>
+                        <th>课程类型</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        records.forEach(record => {
+            html += `
+                <tr>
+                    <td>${record.studentId}</td>
+                    <td>${record.courseId}</td>
+                    <td>${record.courseName}</td>
+                    <td>${record.courseType}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    function renderGroupedTable(groupedData) {
+        const container = document.getElementById("tableContainer");
+        let html = "";
+
+        for (const courseType in groupedData) {
+            html += `<div class="type-title">${courseType}</div>`;
+            html += buildTable(groupedData[courseType]);
+        }
+
+        container.innerHTML = html;
+    }
+
+    function buildTable(records) {
+        if (!records || records.length === 0) {
+            return "<p>暂无数据</p>";
+        }
+
+        let html = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>学生ID</th>
+                        <th>课程ID</th>
+                        <th>课程名称</th>
+                        <th>课程类型</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        records.forEach(record => {
+            html += `
+                <tr>
+                    <td>${record.studentId}</td>
+                    <td>${record.courseId}</td>
+                    <td>${record.courseName}</td>
+                    <td>${record.courseType}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        return html;
+    }
+</script>
+
+</body>
+</html>
